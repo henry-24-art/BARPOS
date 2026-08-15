@@ -234,6 +234,77 @@
     border-radius: 999px;
   }
 
+  /* ---------- 3D floating slogan loop ----------
+     Two elements are ever visible at once: the outgoing slogan (easing back
+     into the scene, rotating, shrinking, fading) and the incoming one (easing
+     forward from deep in the scene into resting position). Idle float and
+     mouse-parallax tilt are applied to whichever slogan is fully "active"
+     (resting), all driven from one requestAnimationFrame loop in JS rather
+     than CSS keyframes, since the choreography needs to branch by state. */
+  .slogan-stage {
+    position: static;
+    width: 100%;
+    margin-top: 40px;
+    perspective: 900px;
+  }
+  .slogan-inner {
+    position: relative;
+    min-height: 150px;
+    transform-style: preserve-3d;
+  }
+  .slogan-item {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    transform-style: preserve-3d;
+    will-change: transform, opacity;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .slogan-text {
+    margin: 0;
+    max-width: 92%;
+    font-size: clamp(24px, 7vw, 34px);
+    font-weight: 800;
+    line-height: 1.18;
+    letter-spacing: -0.3px;
+    background: linear-gradient(180deg, #FFE3B0 0%, #F5A524 52%, #D9480F 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    transition: filter 0.3s ease;
+    text-shadow:
+      0px 1px 0 rgba(110,45,8,0.9),
+      0px 2px 0 rgba(100,40,7,0.85),
+      0px 3px 0 rgba(90,35,6,0.8),
+      0px 4px 0 rgba(80,30,5,0.75),
+      0px 5px 0 rgba(70,26,4,0.7),
+      0px 6px 0 rgba(60,22,3,0.65),
+      0px 8px 10px rgba(0,0,0,0.45),
+      0px 12px 28px rgba(245,165,36,0.3);
+    filter: drop-shadow(0 0 18px rgba(245,165,36,0.35));
+  }
+  @media (min-width: 1024px) {
+    .slogan-stage {
+      position: absolute;
+      top: 50%;
+      right: 40px;
+      transform: translateY(-50%);
+      width: 600px;
+      margin-top: 0;
+      perspective: 1400px;
+      z-index: 1;
+    }
+    .slogan-inner { min-height: 260px; }
+    .slogan-text { font-size: clamp(42px, 3.4vw, 64px); max-width: 650px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slogan-text { filter: none; }
+  }
+
   /* ---------- Sections ---------- */
   section { padding: 64px 0; }
   h2 { font-size: 28px; font-weight: 800; text-align: center; margin-bottom: 8px; }
@@ -252,7 +323,7 @@
   .feature-card h3 { font-size: 16px; margin: 0 0 8px; }
   .feature-card p { font-size: 14px; color: var(--text-muted); margin: 0; line-height: 1.5; }
 
-  .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; max-width: 800px; margin: 0 auto; }
+  .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; max-width: 940px; margin: 0 auto; }
   .price-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -460,6 +531,9 @@
         <span>🛒 Grocery Shop</span>
       </div>
     </div>
+    <div class="slogan-stage" id="sloganStage" aria-hidden="true">
+      <div class="slogan-inner" id="sloganInner"></div>
+    </div>
   </div>
 </header>
 
@@ -517,8 +591,8 @@
         </ul>
       </div>
       <div class="price-card highlight">
-        <h3>Unlimited Plan</h3>
-        <div class="price">Contact us <small>for pricing</small></div>
+        <h3>Monthly Plan</h3>
+        <div class="price">MWK 40,000 <small>/ month</small></div>
         <ul>
           <li>Unlimited products</li>
           <li>Everything in Free Trial</li>
@@ -526,6 +600,18 @@
         </ul>
         <p style="font-size:13px;color:var(--text-faint);margin-top:16px;">
           Pay via bank transfer or mobile money, then request an upgrade from inside the app — we'll activate it once payment is confirmed.
+        </p>
+      </div>
+      <div class="price-card">
+        <h3>Annual Plan</h3>
+        <div class="price">MWK 250,000 <small>/ year</small></div>
+        <ul>
+          <li>Unlimited products</li>
+          <li>Everything in Monthly Plan</li>
+          <li>Save MWK 230,000 vs. paying monthly</li>
+        </ul>
+        <p style="font-size:13px;color:var(--text-faint);margin-top:16px;">
+          Same activation process as the monthly plan — pay, then request the upgrade from inside the app.
         </p>
       </div>
     </div>
@@ -599,6 +685,172 @@
 </footer>
 
 <script>
+  // ---- 3D floating slogan loop ----
+  (function () {
+    const stage = document.getElementById('sloganStage');
+    const container = document.getElementById('sloganInner');
+    if (!stage || !container) return;
+
+    const SLOGANS = [
+      'Run Your Entire Shop From One Place',
+      'Know What Sells Before Stock Runs Out',
+      'Track Every Sale And Grow Your Business',
+      'Manage Inventory Without The Guesswork Or Stress',
+      'Keep Selling Even When Internet Goes Down',
+      'Turn Everyday Transactions Into Smarter Business Decisions',
+      'Everything Your Business Needs In One System',
+    ];
+
+    const HOLD_MS = 4000;
+    const TRANS_MS = 1000;
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const hasFinePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+    let isMobile = window.matchMedia('(max-width: 720px)').matches;
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+    // Build the DOM once: each slogan gets its own absolutely-stacked item so we
+    // only ever touch transform/opacity, never layout, during animation.
+    const items = SLOGANS.map((text) => {
+      const item = document.createElement('div');
+      item.className = 'slogan-item';
+      const p = document.createElement('p');
+      p.className = 'slogan-text';
+      p.textContent = text;
+      item.appendChild(p);
+      container.appendChild(item);
+      return { el: item, text: p };
+    });
+
+    // Start every item off deep in the scene and invisible except the first,
+    // which starts already resting, so there's no pop/flash on first paint.
+    items.forEach((item, i) => {
+      if (i === 0) return;
+      item.el.style.opacity = '0';
+      item.el.style.transform = 'translate3d(0px, 34px, -420px) rotateX(-7deg) rotateY(11deg) scale(0.64)';
+    });
+    items[0].el.style.opacity = '1';
+    items[0].el.style.transform = 'translate3d(0px, 0px, 0px) rotateX(0deg) rotateY(0deg) scale(1)';
+    items[0].el.style.pointerEvents = 'auto';
+
+    let activeIndex = 0;
+    let nextIndex = 1;
+    let phase = 'hold'; // 'hold' | 'transition'
+    let phaseStart = performance.now();
+
+    // Ambient mouse parallax (desktop with a real mouse only) - smoothed toward
+    // the raw pointer position each frame rather than snapping, for a premium feel.
+    let targetNX = 0, targetNY = 0;
+    let mouseNX = 0, mouseNY = 0;
+    if (hasFinePointer && !reduceMotion) {
+      window.addEventListener('pointermove', (e) => {
+        targetNX = (e.clientX / window.innerWidth) * 2 - 1;
+        targetNY = (e.clientY / window.innerHeight) * 2 - 1;
+      });
+    }
+
+    // Hover boost: moving the active slogan a touch closer + brighter while the
+    // pointer is directly over the stage.
+    let hovering = false;
+    let hoverBoost = 0;
+    if (hasFinePointer) {
+      stage.addEventListener('pointerenter', () => { hovering = true; });
+      stage.addEventListener('pointerleave', () => { hovering = false; });
+    }
+
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        isMobile = window.matchMedia('(max-width: 720px)').matches;
+      }, 150);
+    });
+
+    function renderActive(item, now) {
+      const t = now / 1000;
+      const floatY = reduceMotion ? 0 : Math.sin(t * 0.6) * 6;
+      const floatRotZ = reduceMotion ? 0 : Math.sin(t * 0.4) * 1.2;
+      const tiltMax = reduceMotion ? 0 : (isMobile ? 1.5 : 8);
+      const rx = -mouseNY * tiltMax;
+      const ry = mouseNX * tiltMax;
+      const hoverZ = hoverBoost * (isMobile ? 8 : 28);
+      item.el.style.opacity = '1';
+      item.el.style.pointerEvents = 'auto';
+      item.el.style.transform =
+        `translate3d(0px, ${floatY}px, ${hoverZ}px) rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${floatRotZ}deg) scale(1)`;
+      item.text.style.filter =
+        `drop-shadow(0 0 ${18 + hoverBoost * 22}px rgba(245,165,36,${(0.35 + hoverBoost * 0.25).toFixed(2)})) brightness(${(1 + hoverBoost * 0.16).toFixed(2)})`;
+    }
+
+    function renderOutgoing(item, eased) {
+      const zFar = reduceMotion ? 0 : (isMobile ? -160 : -420);
+      const yFar = reduceMotion ? 0 : -46;
+      const rxFar = reduceMotion ? 0 : (isMobile ? 2 : 9);
+      const ryFar = reduceMotion ? 0 : (isMobile ? -3 : -13);
+      const z = lerp(0, zFar, eased);
+      const y = lerp(0, yFar, eased);
+      const rx = lerp(0, rxFar, eased);
+      const ry = lerp(0, ryFar, eased);
+      const scale = lerp(1, reduceMotion ? 1 : 0.62, eased);
+      const op = lerp(1, 0, eased);
+      item.el.style.transform = `translate3d(0px, ${y}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${scale})`;
+      item.el.style.opacity = String(op);
+      item.el.style.pointerEvents = 'none';
+    }
+
+    function renderIncoming(item, eased) {
+      const zFar = reduceMotion ? 0 : (isMobile ? -160 : -420);
+      const yFar = reduceMotion ? 0 : 34;
+      const rxFar = reduceMotion ? 0 : (isMobile ? -2 : -7);
+      const ryFar = reduceMotion ? 0 : (isMobile ? 3 : 11);
+      const scaleFar = reduceMotion ? 1 : (isMobile ? 0.85 : 0.64);
+      const z = lerp(zFar, 0, eased);
+      const y = lerp(yFar, 0, eased);
+      const rx = lerp(rxFar, 0, eased);
+      const ry = lerp(ryFar, 0, eased);
+      const scale = lerp(scaleFar, 1, eased);
+      const op = lerp(0, 1, eased);
+      item.el.style.transform = `translate3d(0px, ${y}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${scale})`;
+      item.el.style.opacity = String(op);
+      item.el.style.pointerEvents = 'none';
+    }
+
+    function tick(now) {
+      mouseNX += (targetNX - mouseNX) * 0.06;
+      mouseNY += (targetNY - mouseNY) * 0.06;
+      hoverBoost += ((hovering ? 1 : 0) - hoverBoost) * 0.08;
+
+      const elapsed = now - phaseStart;
+
+      if (phase === 'hold') {
+        if (elapsed >= HOLD_MS) {
+          phase = 'transition';
+          phaseStart = now;
+          nextIndex = (activeIndex + 1) % items.length;
+        } else {
+          renderActive(items[activeIndex], now);
+        }
+      }
+
+      if (phase === 'transition') {
+        const t = Math.min(1, (now - phaseStart) / TRANS_MS);
+        const eased = easeInOutCubic(t);
+        renderOutgoing(items[activeIndex], eased);
+        renderIncoming(items[nextIndex], eased);
+        if (t >= 1) {
+          activeIndex = nextIndex;
+          phase = 'hold';
+          phaseStart = now;
+        }
+      }
+
+      requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  })();
+
   // ---- signup tornado: canvas vortex of converging lines (warm palette version
   // of Originkit's "Tornado" component, hand-ported since this page is plain JS,
   // not React/Tailwind) ----

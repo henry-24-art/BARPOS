@@ -31,11 +31,40 @@ export async function createStaffAccount(input: {
   await apiRequest('/api/auth/staff', { method: 'POST', body: input });
 }
 
+export interface StaffMember {
+  id: string;
+  name: string;
+  username: string;
+  role: StaffRole;
+  active: boolean;
+  createdAt: string;
+}
+
+/** Lists every staff account in the caller's business (admin only). */
+export async function listStaff(): Promise<StaffMember[]> {
+  const { staff } = await apiRequest('/api/auth/staff', { method: 'GET' });
+  return staff;
+}
+
+/** Changes an existing staff member's role and/or active status (admin only). */
+export async function updateStaffAccount(id: string, input: { role?: StaffRole; active?: boolean }): Promise<void> {
+  await apiRequest(`/api/auth/staff/${id}`, { method: 'PUT', body: input });
+}
+
 export interface NewStaffMember {
   name: string;
   username: string;
   password: string;
   role: Exclude<StaffRole, 'admin'>;
+}
+
+/**
+ * Changes the logged-in user's own password. Server verifies currentPassword
+ * against the stored hash before writing the new one, so this can't be used
+ * to overwrite someone else's password even with a valid token for another route.
+ */
+export async function changePassword(input: { currentPassword: string; newPassword: string }): Promise<void> {
+  await apiRequest('/api/auth/me/password', { method: 'PUT', body: input });
 }
 
 export async function signup(input: {
